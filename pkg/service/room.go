@@ -1,14 +1,13 @@
 package service
 
 import (
-	"encoding/json"
-	"time"
-
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-kafka/v2/pkg/kafka"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/kevingentile/chet/pkg/chat"
+	"github.com/kevingentile/chet/pkg/user"
+	"google.golang.org/protobuf/proto"
 )
 
 type RoomService struct {
@@ -19,24 +18,16 @@ var (
 	publishTopic = "room-events"
 )
 
-func (rs *RoomService) CreateRoom() (*chat.Room, error) {
-	r := chat.NewRoom()
-	roomCreatedEvent := chat.RoomCreatedEvent{
-		Room: *r,
-		Time: time.Now(),
+func (rs *RoomService) CreateRoom(host user.UserID) error {
+	r := &chat.CreateRoom{
+		HostID: host.String(),
 	}
-	payload, err := json.Marshal(roomCreatedEvent)
+
+	payload, err := proto.Marshal(r)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if err := rs.publish(payload); err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (rs *RoomService) publish(payload message.Payload) error {
 	msg := message.NewMessage(watermill.NewUUID(), payload)
 	middleware.SetCorrelationID(watermill.NewShortUUID(), msg)
 	if err := rs.publisher.Publish(publishTopic, msg); err != nil {
@@ -45,8 +36,12 @@ func (rs *RoomService) publish(payload message.Payload) error {
 	return nil
 }
 
-func (rs *RoomService) DisbandRoom() {
+func (rs *RoomService) DisbandRoom() error {
+	return nil
+}
 
+func (rs *RoomService) PostMessage() error {
+	return nil
 }
 
 func NewRoomService(brokers []string) *RoomService {

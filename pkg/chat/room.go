@@ -11,11 +11,11 @@ type RoomID = uuid.UUID
 
 type Room struct {
 	Peers []user.UserID `json:"p"`
-	ID    RoomID      `json:"rid"`
+	ID    RoomID        `json:"rid"`
 }
 
 type RoomCreatedEvent struct {
-	Room Room    `json:"r"`
+	Room Room      `json:"r"`
 	Time time.Time `json:"tc"`
 }
 
@@ -31,7 +31,7 @@ type RoomUserAddedEvent struct {
 
 func NewRoom() *Room {
 	return &Room{
-		Peers: []user.UserID,
+		Peers: []user.UserID{},
 		ID:    uuid.New(),
 	}
 }
@@ -43,13 +43,14 @@ func (r *Room) AddUser(userID user.UserID) {
 func (r *Room) RemoveUser(userID user.UserID) {
 	for index, uid := range r.Peers {
 		if uid == userID {
-			r.Peers = append(r.Peers[:index],r.Peers[index+1])
+			r.Peers = append(r.Peers[:index], r.Peers[index+1])
 			break
 		}
 	}
 }
 
 type RoomServicer interface {
-	CreateRoom() *Room
-	DisbandRoom()
+	CreateRoom() (*Room, error)
+	DisbandRoom() error
+	PostMessage() error
 }
