@@ -11,28 +11,34 @@ services:
   #   working_dir: /app
   #   command: go run main.go
 
-  zookeeper:
-    image: zookeeper:latest
-    # logging:
-    #   driver: none
-    restart: unless-stopped
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    ports:
-      - "2181:2181"
+  # zookeeper:
+  #   image: zookeeper:latest
+  #   # logging:
+  #   #   driver: none
+  #   restart: unless-stopped
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #   ports:
+  #     - "2181:2181"
 
-  # kafka-topics --create --topic room-events --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-  kafka:
-    image: bitnami/kafka:latest
-    # logging:
-    #   driver: none
+  # # kafka-topics --create --topic room-events --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+  # kafka:
+  #   image: bitnami/kafka:latest
+  #   # logging:
+  #   #   driver: none
+  #   restart: unless-stopped
+  #   depends_on:
+  #   - zookeeper
+  #   environment:
+  #     KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+  #     KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+  #     ALLOW_PLAINTEXT_LISTENER: "yes"
+  #   ports:
+  #     - "9092:9092"
+
+  rabbitmq:
+    image: rabbitmq:alpine
     restart: unless-stopped
-    depends_on:
-    - zookeeper
-    environment:
-      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      ALLOW_PLAINTEXT_LISTENER: "yes"
     ports:
-      - "9092:9092"
+      - "5672:5672"

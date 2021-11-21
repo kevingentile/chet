@@ -10,13 +10,18 @@ import (
 type RoomID = uuid.UUID
 
 type Room struct {
-	Peers []user.UserID `json:"p"`
-	ID    RoomID        `json:"rid"`
+	Host  user.UserID   `json:"host"`
+	Peers []user.UserID `json:"peers"`
+	ID    RoomID        `json:"roomId"`
+}
+
+type CreateRoomCmd struct {
+	Host user.UserID `json:"host"`
 }
 
 type RoomCreatedEvent struct {
-	Room Room      `json:"r"`
-	Time time.Time `json:"tc"`
+	Room Room      `json:"room"`
+	Time time.Time `json:"createdAt"`
 }
 
 type RoomDisbandedEvent struct {
@@ -29,8 +34,9 @@ type RoomUserAddedEvent struct {
 	UserID user.UserID `json:"uid"`
 }
 
-func NewRoom() *Room {
+func NewRoom(host user.UserID) *Room {
 	return &Room{
+		Host:  host,
 		Peers: []user.UserID{},
 		ID:    uuid.New(),
 	}

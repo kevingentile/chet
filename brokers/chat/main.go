@@ -1,83 +1,116 @@
-// package main
+package main
 
-// import (
-// 	"time"
+import (
+	"context"
+	"log"
+	"time"
 
-// 	"github.com/ThreeDotsLabs/watermill"
-// 	"github.com/ThreeDotsLabs/watermill-kafka/v2/pkg/kafka"
-// 	"github.com/ThreeDotsLabs/watermill/message"
-// 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
-// 	"github.com/ThreeDotsLabs/watermill/message/router/plugin"
-// )
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill-amqp/pkg/amqp"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
+	"github.com/kevingentile/chet/pkg/chat"
+)
 
-// var (
-// 	brokers      = []string{"127.0.0.1:9092"}
-// 	cosumerTopic = "room-events"
-// )
+var amqpAddress = "amqp://guest:guest@localhost:5672/"
 
-// func main() {
-// 	logger := watermill.NewStdLogger(false, false)
-// 	logger.Info("Starting the consumer", nil)
+func main() {
+	logger := watermill.NewStdLogger(false, false)
+	cqrsMarshaler := cqrs.JSONMarshaler{}
 
-// 	r, err := message.NewRouter(message.RouterConfig{}, logger)
-// 	if err != nil {
-// 		panic(err)
-// 	}
+	commandsAMQPConfig := amqp.NewDurableQueueConfig(amqpAddress)
+	commandsPublisher, err := amqp.NewPublisher(commandsAMQPConfig, logger)
+	if err != nil {
+		panic(err)
+	}
+	commandsSubscriber, err := amqp.NewSubscriber(commandsAMQPConfig, logger)
+	if err != nil {
+		panic(err)
+	}
 
-// 	retryMiddleware := middleware.Retry{
-// 		MaxRetries:      1,
-// 		InitialInterval: time.Millisecond * 10,
-// 	}
+	eventsPublisher, err := amqp.NewPublisher(amqp.NewDurablePubSubConfig(amqpAddress, nil), logger)
+	if err != nil {
+		panic(err)
+	}
 
-// 	r.AddMiddleware(
-// 		// Recoverer middleware recovers panic from handlers and middlewares
-// 		middleware.Recoverer,
+	router, err := message.NewRouter(message.RouterConfig{}, logger)
+	if err != nil {
+		panic(err)
+	}
 
-// 		// Limit incoming messages to 10 per second
-// 		middleware.NewThrottle(10, time.Second).Middleware,
+	router.AddMiddleware(middleware.Recoverer)
 
-// 		// Retry middleware retries message processing if an error occurred in the handler
-// 		retryMiddleware.Middleware,
+	// cqrs.Facade is facade for Command and Event buses and processors.
+	// You can use facade, or create buses and processors manually (you can inspire with cqrs.NewFacade)
+	_, err = cqrs.NewFacade(cqrs.FacadeConfig{
+		GenerateCommandsTopic: func(commandName string) string {
+			// we are using queue RabbitMQ config, so we need to have topic per command type
+			return commandName
+		},
+		CommandHandlers: func(cb *cqrs.CommandBus, eb *cqrs.EventBus) []cqrs.CommandHandler {
+			return []cqrs.CommandHandler{
+				CreateRoomCmdHandler{eb},
+			}
+		},
+		CommandsPublisher: commandsPublisher,
+		CommandsSubscriberConstructor: func(handlerName string) (message.Subscriber, error) {
+			// we can reuse subscriber, because all commands have separated topics
+			return commandsSubscriber, nil
+		},
+		GenerateEventsTopic: func(eventName string) string {
+			// because we are using PubSub RabbitMQ config, we can use one topic for all events
+			return "chet-events"
+		},
+		// EventHandlers: func(cb *cqrs.CommandBus, eb *cqrs.EventBus) []cqrs.EventHandler {
+		// 	return []cqrs.EventHandler{}
+		// },
+		EventsPublisher: eventsPublisher,
+		EventsSubscriberConstructor: func(handlerName string) (message.Subscriber, error) {
+			config := amqp.NewDurablePubSubConfig(
+				amqpAddress,
+				amqp.GenerateQueueNameTopicNameWithSuffix(handlerName),
+			)
 
-// 		// Correlation ID middleware adds the correlation ID of the consumed message to each produced message.
-// 		// It's useful for debugging.
-// 		middleware.CorrelationID,
+			return amqp.NewSubscriber(config, logger)
+		},
+		Router:                router,
+		CommandEventMarshaler: cqrsMarshaler,
+		Logger:                logger,
+	})
+	if err != nil {
+		panic(err)
+	}
 
-// 		// Simulate errors or panics from handler
-// 		middleware.RandomFail(0.01),
-// 		middleware.RandomPanic(0.01),
-// 	)
+	if err := router.Run(context.Background()); err != nil {
+		panic(err)
+	}
+}
 
-// 	// Close the router when a SIGTERM is sent
-// 	r.AddPlugin(plugin.SignalsHandler)
+type CreateRoomCmdHandler struct {
+	eventBus *cqrs.EventBus
+}
 
-// 	// Handler that counts consumed posts
-// 	r.AddNoPublisherHandler(
-// 		"chat_broker",
-// 		cosumerTopic,
-// 		createSubscriber(cosumerTopic, logger),
-// 		messageHandler,
-// 	)
-// }
+func (h CreateRoomCmdHandler) HandlerName() string {
+	return "CreateRoomHandler"
+}
 
-// func createSubscriber(consumerGroup string, logger watermill.LoggerAdapter) message.Subscriber {
-// 	sub, err := kafka.NewSubscriber(
-// 		kafka.SubscriberConfig{
-// 			Brokers:       brokers,
-// 			Unmarshaler:   kafka.DefaultMarshaler{},
-// 			ConsumerGroup: consumerGroup,
-// 		},
-// 		logger,
-// 	)
-// 	if err != nil {
-// 		panic(err)
-// 	}
+func (h CreateRoomCmdHandler) NewCommand() interface{} {
+	return &chat.CreateRoomCmd{}
+}
 
-// 	return sub
-// }
+func (h CreateRoomCmdHandler) Handle(ctx context.Context, c interface{}) error {
+	cmd := c.(*chat.CreateRoomCmd)
 
-// func messageHandler(msg *message.Message) error {
-// 	switch msg.Payload {
-// 		case
-// 	}
-// }
+	room := chat.NewRoom(cmd.Host)
+
+	if err := h.eventBus.Publish(ctx, &chat.RoomCreatedEvent{
+		Room: *room,
+		Time: time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+
+	log.Println("Created chat room:", *room)
+	return nil
+}

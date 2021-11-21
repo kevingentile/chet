@@ -1,39 +1,24 @@
 package service
 
 import (
+	"context"
+
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-kafka/v2/pkg/kafka"
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
+	"github.com/ThreeDotsLabs/watermill-amqp/pkg/amqp"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/kevingentile/chet/pkg/chat"
 	"github.com/kevingentile/chet/pkg/user"
-	"google.golang.org/protobuf/proto"
 )
 
 type RoomService struct {
-	publisher message.Publisher
+	bus *cqrs.CommandBus
 }
 
-var (
-	publishTopic = "room-events"
-)
-
 func (rs *RoomService) CreateRoom(host user.UserID) error {
-	r := &chat.CreateRoom{
-		HostID: host.String(),
+	r := &chat.CreateRoomCmd{
+		Host: host,
 	}
-
-	payload, err := proto.Marshal(r)
-	if err != nil {
-		return err
-	}
-
-	msg := message.NewMessage(watermill.NewUUID(), payload)
-	middleware.SetCorrelationID(watermill.NewShortUUID(), msg)
-	if err := rs.publisher.Publish(publishTopic, msg); err != nil {
-		return err
-	}
-	return nil
+	return rs.bus.Send(context.Background(), r)
 }
 
 func (rs *RoomService) DisbandRoom() error {
@@ -44,27 +29,19 @@ func (rs *RoomService) PostMessage() error {
 	return nil
 }
 
-func NewRoomService(brokers []string) *RoomService {
-	p := createPublisher(brokers)
-	return &RoomService{
-		publisher: p,
-	}
-}
+func NewRoomService(amqpAddress string) (*RoomService, error) {
+	logger := watermill.NewStdLogger(false, false)
 
-func createPublisher(brokers []string) message.Publisher {
-	kafkaPublisher, err := kafka.NewPublisher(
-		kafka.PublisherConfig{
-			Brokers:   brokers,
-			Marshaler: kafka.DefaultMarshaler{},
-		},
-		watermill.NewStdLogger(
-			true,  // TODO flag debug
-			false, // trace
-		),
-	)
+	commandsPublisher, err := amqp.NewPublisher(amqp.NewDurableQueueConfig(amqpAddress), logger)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return kafkaPublisher
+	bus, err := cqrs.NewCommandBus(commandsPublisher, func(commandName string) string { return commandName }, cqrs.JSONMarshaler{})
+	if err != nil {
+		return nil, err
+	}
+	return &RoomService{
+		bus: bus,
+	}, nil
 }
