@@ -2,22 +2,31 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kevingentile/chet/pkg/infrastructure"
 	"github.com/kevingentile/chet/pkg/service"
 )
 
-var amqpAddress = "amqp://guest:guest@localhost:5672/"
+const amqpAddress = "amqp://guest:guest@localhost:5672/"
+const mongoUri = "mongodb://root:example@localhost:27017/?maxPoolSize=20&w=majority"
 
 func main() {
-	roomService, err := service.NewRoomService(amqpAddress)
+	eventStore, err := infrastructure.NewDefaultMongoStore(mongoUri)
+	if err != nil {
+		panic(err)
+	}
+	roomService, err := service.NewRoomService(amqpAddress, eventStore)
 	if err != nil {
 		panic(err)
 	}
 	for {
 		fmt.Println("Publishing create room...")
-		roomService.CreateRoom(uuid.New())
-		time.Sleep(1 * time.Second)
+		if err := roomService.CreateRoom(uuid.New()); err != nil {
+			log.Println(err)
+		}
+		time.Sleep(5 * time.Second)
 	}
 }
