@@ -62,17 +62,21 @@ type RoomServicer interface {
 }
 
 type RoomView struct {
-	Host      user.UserID   `bson:"host"`
-	Peers     []user.UserID `bson:"peers"`
-	ID        RoomID        `bson:"_id"`
-	CreatedAt time.Time     `bson:"createdAt"`
+	ID        string    `bson:"id"`
+	Host      string    `bson:"host"`
+	Peers     []string  `bson:"peers"`
+	CreatedAt time.Time `bson:"createdAt"`
 }
 
-func NewRoomView(room *Room) *RoomView {
+func NewRoomView(room Room) *RoomView {
+	peers := make([]string, len(room.Peers))
+	for i, p := range room.Peers {
+		peers[i] = p.String()
+	}
 	return &RoomView{
-		Host:      room.Host,
-		Peers:     room.Peers,
-		ID:        room.ID,
+		ID:        room.ID.String(),
+		Host:      room.Host.String(),
+		Peers:     peers,
 		CreatedAt: time.Now().UTC(),
 	}
 }

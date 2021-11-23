@@ -116,9 +116,11 @@ func (h RoomCreatedHandler) NewEvent() interface{} {
 
 func (h RoomCreatedHandler) Handle(ctx context.Context, c interface{}) error {
 	event := c.(*chat.RoomCreatedEvent)
-	if err := h.store.Create(event); err != nil {
+	view := chat.NewRoomView(event.Room)
+	if err := h.store.Create(view); err != nil {
 		return err
 	}
-	log.Println("Created chat room view:", event)
+
+	log.Println("Created chat room view:", view)
 	return nil
 }
