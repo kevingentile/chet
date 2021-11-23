@@ -3,8 +3,9 @@ package infrastructure
 import (
 	"context"
 
+	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 //TODO client disconnect
@@ -13,17 +14,18 @@ type MongoStore struct {
 	collection *mongo.Collection
 }
 
-func NewDefaultMongoStore(mongoUri string) (*MongoStore, error) {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoUri))
-	if err != nil {
-		return nil, err
-	}
+func NewDefaultMongoStore(client *mongo.Client, database string, collection string) (*MongoStore, error) {
 	return &MongoStore{
 		client:     client,
-		collection: client.Database("chet").Collection("events")}, nil
+		collection: client.Database(database).Collection(collection)}, nil
 }
 
-func (m *MongoStore) Save(message interface{}) error {
-	_, err := m.collection.InsertOne(context.TODO(), message)
+func (m *MongoStore) Update(id uuid.UUID, view interface{}) error {
+	_, err := m.collection.ReplaceOne(context.TODO(), bson.M{"id": id}, view)
+	return err
+}
+
+func (m *MongoStore) Create(view interface{}) error {
+	_, err := m.collection.InsertOne(context.TODO(), view)
 	return err
 }

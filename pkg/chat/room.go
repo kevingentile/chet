@@ -60,3 +60,19 @@ type RoomServicer interface {
 	DisbandRoom() error
 	PostMessage() error
 }
+
+type RoomView struct {
+	Host      user.UserID   `bson:"host"`
+	Peers     []user.UserID `bson:"peers"`
+	ID        RoomID        `bson:"_id"`
+	CreatedAt time.Time     `bson:"createdAt"`
+}
+
+func NewRoomView(room *Room) *RoomView {
+	return &RoomView{
+		Host:      room.Host,
+		Peers:     room.Peers,
+		ID:        room.ID,
+		CreatedAt: time.Now().UTC(),
+	}
+}
