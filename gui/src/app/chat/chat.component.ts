@@ -1,10 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { ChatService } from '../chat.service';
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from 'rxjs/webSocket';
-import { retry } from 'rxjs';
+import { catchError, delay, Observable, retry, retryWhen, take } from 'rxjs';
 
 interface Message {
   id: string
+  timestamp: number
 }
 
 @Component({
@@ -17,42 +18,30 @@ export class ChatComponent implements OnInit {
   ws: WebSocketSubject<Message> | undefined
   constructor(private chatService: ChatService) {
     this.messages = []
-   }
+  }
 
   ngOnInit(): void {
-    // const cfg: WebSocketSubjectConfig = {
-    //   url: "ws://localhost:8000/ws",
-    //   binaryType: 'arraybuffer'
-    // }
-    this.ws = webSocket("ws://localhost:8000/ws")
-    // this.ws.addEventListener('open', (event: Event) => {
-    //   console.log(event)
-    //   let msg = {
-    //     "type": "connect",
-    //     "id": "asdf",
-    //   }
+    this.ws = webSocket("ws://localhost:8000/ws?roomId=aef24add-ea80-437b-a030-76d6e993ae52")
 
-    //   this.ws?.send(JSON.stringify(msg))
-    //   this.messages.push(`${event}`)
-    // })
-
-    // this.ws.addEventListener('message', (event: MessageEvent) => {
-    //   console.log(event.data)
-    // })
-
-    this.ws.pipe(retry()).subscribe({
+    this.ws.pipe(
+      retryWhen(
+        (errors: Observable<any>) => errors.pipe(
+          delay(5000),
+          take(10)
+        )
+      ),
+    ).subscribe({
       next: (message: Message) => {
         console.log(message)
-        
+
         this.messages.push(JSON.stringify(message))
+        if (this.messages.length > 15) {
+          this.messages = this.messages.slice(1)
+        }
       },
       error: (err) => {
-        console.log(err)
+        // console.log(err)
       }
     })
-    let msg: Message = {
-        id: "asdf",
-    }
-    this.ws.next(msg)
   }
 }

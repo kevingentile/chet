@@ -18,7 +18,14 @@ func (rs *RoomService) CreateRoom(host user.UserID) error {
 	r := &chat.CreateRoomCmd{
 		Host: host,
 	}
-	return rs.bus.Send(context.Background(), r)
+	return rs.bus.Send(context.TODO(), r)
+}
+
+func (rs *RoomService) CreateRoomPublisher(room chat.RoomID) error {
+	r := &chat.CreateRoomPublisherCmd{
+		ID: room,
+	}
+	return rs.bus.Send(context.TODO(), r)
 }
 
 func (rs *RoomService) DisbandRoom() error {

@@ -22,12 +22,18 @@ services:
       ME_CONFIG_MONGODB_ADMINPASSWORD: example
       ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
 
+  #docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream_management
+
   rabbitmq:
-    image: rabbitmq:management-alpine
+    container_name: rabbitmq
+    image: rabbitmq:3.9-management
     restart: unless-stopped
     hostname: chet-rabbitmq
     ports:
       - "5672:5672"
+      - "5552:5552"
       - "15672:15672"
     volumes:
       - "./data/rmq:/var/lib/rabbitmq/mnesia/"
+    environment:
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"

@@ -34,6 +34,15 @@ type RoomUserAddedEvent struct {
 	UserID user.UserID `json:"uid"`
 }
 
+type CreateRoomPublisherCmd struct {
+	ID RoomID `json:"rid"`
+}
+
+type RoomPublisherCreated struct {
+	ID        RoomID `json:"rid"`
+	TopicName string `json:"topicName"`
+}
+
 func NewRoom(host user.UserID) *Room {
 	return &Room{
 		Host:  host,

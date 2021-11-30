@@ -11,6 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/kevingentile/chet/pkg/chat"
+	"github.com/kevingentile/chet/pkg/service"
 )
 
 var amqpAddress = "amqp://guest:guest@localhost:5672/"
@@ -39,6 +40,11 @@ func main() {
 		panic(err)
 	}
 
+	roomService, err := service.NewRoomService(amqpAddress)
+	if err != nil {
+		panic(err)
+	}
+
 	router.AddMiddleware(middleware.Recoverer)
 
 	// cqrs.Facade is facade for Command and Event buses and processors.
@@ -50,7 +56,7 @@ func main() {
 		},
 		CommandHandlers: func(cb *cqrs.CommandBus, eb *cqrs.EventBus) []cqrs.CommandHandler {
 			return []cqrs.CommandHandler{
-				CreateRoomCmdHandler{eb},
+				CreateRoomCmdHandler{eb, roomService},
 			}
 		},
 		CommandsPublisher: commandsPublisher,
@@ -88,7 +94,8 @@ func main() {
 }
 
 type CreateRoomCmdHandler struct {
-	eventBus *cqrs.EventBus
+	eventBus   *cqrs.EventBus
+	roomSerice *service.RoomService
 }
 
 func (h CreateRoomCmdHandler) HandlerName() string {
@@ -112,5 +119,12 @@ func (h CreateRoomCmdHandler) Handle(ctx context.Context, c interface{}) error {
 	}
 
 	log.Println("Created chat room:", *room)
+
+	if err := h.roomSerice.CreateRoomPublisher(room.ID); err != nil {
+		return err
+	}
+
+	log.Println("Initiaing create room publisher", room.ID)
+
 	return nil
 }
