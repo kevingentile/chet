@@ -9,32 +9,39 @@ import (
 
 type RoomID = uuid.UUID
 
+const (
+	CreateRoomCmd          = "CreateRoomCmd"
+	CreateRoomPublisherCmd = "CreateRoomPublisherCmd"
+
+	RoomCreatedEvent = "RoomCreatedEvent"
+)
+
 type Room struct {
 	Host  user.UserID   `json:"host"`
 	Peers []user.UserID `json:"peers"`
 	ID    RoomID        `json:"roomId"`
 }
 
-type CreateRoomCmd struct {
+type CreateRoom struct {
 	Host user.UserID `json:"host"`
 }
 
-type RoomCreatedEvent struct {
+type RoomCreated struct {
 	Room Room      `json:"room"`
 	Time time.Time `json:"createdAt"`
 }
 
-type RoomDisbandedEvent struct {
+type RoomDisbanded struct {
 	ID   RoomID    `json:"rid"`
 	Time time.Time `json:"td"`
 }
 
-type RoomUserAddedEvent struct {
+type RoomUserAdded struct {
 	ID     RoomID      `json:"rid"`
 	UserID user.UserID `json:"uid"`
 }
 
-type CreateRoomPublisherCmd struct {
+type CreateRoomPublisher struct {
 	ID RoomID `json:"rid"`
 }
 

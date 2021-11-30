@@ -1,31 +1,43 @@
 package service
 
 import (
-	"context"
+	"encoding/json"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-amqp/pkg/amqp"
-	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/kevingentile/chet/pkg/chat"
+	"github.com/kevingentile/chet/pkg/eventstream"
 	"github.com/kevingentile/chet/pkg/user"
+	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
 )
 
 type RoomService struct {
-	bus *cqrs.CommandBus
+	producer *eventstream.MessageStreamProducer
 }
 
 func (rs *RoomService) CreateRoom(host user.UserID) error {
-	r := &chat.CreateRoomCmd{
+	r := &chat.CreateRoom{
 		Host: host,
 	}
-	return rs.bus.Send(context.TODO(), r)
+	payload, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+
+	msg := amqp.NewMessage(payload)
+	msg.Properties = &amqp.MessageProperties{Subject: chat.CreateRoomCmd}
+	return rs.producer.Send(msg)
 }
 
 func (rs *RoomService) CreateRoomPublisher(room chat.RoomID) error {
-	r := &chat.CreateRoomPublisherCmd{
+	r := &chat.CreateRoomPublisher{
 		ID: room,
 	}
-	return rs.bus.Send(context.TODO(), r)
+	payload, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	msg := amqp.NewMessage(payload)
+	msg.Properties = &amqp.MessageProperties{Subject: chat.CreateRoomPublisherCmd}
+	return rs.producer.Send(msg)
 }
 
 func (rs *RoomService) DisbandRoom() error {
@@ -36,19 +48,13 @@ func (rs *RoomService) PostMessage() error {
 	return nil
 }
 
-func NewRoomService(amqpAddress string) (*RoomService, error) {
-	logger := watermill.NewStdLogger(false, false)
-
-	commandsPublisher, err := amqp.NewPublisher(amqp.NewDurableQueueConfig(amqpAddress), logger)
+func NewRoomService(stream *eventstream.MessageStream) (*RoomService, error) {
+	messageProducer, err := stream.NewProducer(&eventstream.MessageStreamProducerConfig{})
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	bus, err := cqrs.NewCommandBus(commandsPublisher, func(commandName string) string { return commandName }, cqrs.JSONMarshaler{})
-	if err != nil {
-		return nil, err
-	}
 	return &RoomService{
-		bus: bus,
+		producer: messageProducer,
 	}, nil
 }

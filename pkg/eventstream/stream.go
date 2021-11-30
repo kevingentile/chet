@@ -17,6 +17,7 @@ type StreamConfig struct {
 type MessageStream struct {
 	Env        *stream.Environment
 	StreamName string
+	Config     *StreamConfig
 }
 
 func NewMessageStream(config *StreamConfig) (*MessageStream, error) {
@@ -53,6 +54,7 @@ func NewMessageStream(config *StreamConfig) (*MessageStream, error) {
 	return &MessageStream{
 		Env:        env,
 		StreamName: config.StreamName,
+		Config:     config,
 	}, nil
 }
 
@@ -79,6 +81,13 @@ func (ms *MessageStream) NewConsumer(config *MessageStreamConsumerConfig) (*Mess
 
 func (ms *MessageStream) Delete() error {
 	return ms.Env.DeleteStream(ms.StreamName)
+}
+
+func (ms *MessageStream) Reset() error {
+	if err := ms.Env.DeleteStream(ms.StreamName); err != nil {
+		return err
+	}
+	return ms.Env.DeclareStream(ms.StreamName, ms.Config.StreamOptions)
 }
 
 type MessageStreamConsumerConfig struct {

@@ -8,14 +8,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-amqp/pkg/amqp"
-	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/kevingentile/chet/pkg/chat"
+	"github.com/kevingentile/chet/pkg/eventstream"
+	"github.com/kevingentile/chet/pkg/service"
+	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
+	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
 
 type Message struct {
@@ -27,8 +27,8 @@ type Message struct {
 type RoomRelay struct {
 	RoomID string
 	// RoomName     string
-	Subscription *amqp.Subscriber
-	Publisher    *amqp.Publisher
+	Subscription *eventstream.MessageStreamConsumer
+	Publisher    *eventstream.MessageStreamProducer
 }
 
 const amqpAddress = "amqp://guest:guest@localhost:5672/"
@@ -46,8 +46,8 @@ func main() {
 		return r.Host == "localhost:8000"
 	}
 
-	go runMessageBroker()
-	go handleRoomSubscriptions()
+	go runMessageBroker(context.TODO())
+	// go handleRoomSubscriptions()
 
 	router.GET("/ws", func(c *gin.Context) {
 		roomID := c.Query("roomId")
@@ -91,168 +91,145 @@ func main() {
 	router.Run("localhost:8000")
 }
 
-func runMessageBroker() {
-	logger := watermill.NewStdLogger(false, false)
-	cqrsMarshaler := cqrs.JSONMarshaler{}
-
-	commandsAMQPConfig := amqp.NewDurableQueueConfig(amqpAddress)
-
-	commandsPublisher, err := amqp.NewPublisher(commandsAMQPConfig, logger)
-	if err != nil {
-		panic(err)
-	}
-	commandsSubscriber, err := amqp.NewSubscriber(commandsAMQPConfig, logger)
-	if err != nil {
-		panic(err)
-	}
-
-	eventsPublisher, err := amqp.NewPublisher(amqp.NewDurablePubSubConfig(amqpAddress, nil), logger)
-	if err != nil {
-		panic(err)
-	}
-
-	router, err := message.NewRouter(message.RouterConfig{}, logger)
-	if err != nil {
-		panic(err)
-	}
-
-	router.AddMiddleware(middleware.Recoverer)
-
-	// cqrs.Facade is facade for Command and Event buses and processors.
-	// You can use facade, or create buses and processors manually (you can inspire with cqrs.NewFacade)
-	_, err = cqrs.NewFacade(cqrs.FacadeConfig{
-		GenerateCommandsTopic: func(commandName string) string {
-			// we are using queue RabbitMQ config, so we need to have topic per command type
-			return commandName
+func runMessageBroker(ctx context.Context) {
+	messageStream, err := eventstream.NewMessageStream(&eventstream.StreamConfig{
+		EnvOptions: stream.NewEnvironmentOptions().
+			SetHost("localhost").
+			SetPort(5552).
+			SetUser("guest").
+			SetPassword("guest"),
+		StreamOptions: &stream.StreamOptions{
+			MaxLengthBytes: stream.ByteCapacity{}.MB(500),
 		},
-		CommandHandlers: func(cb *cqrs.CommandBus, eb *cqrs.EventBus) []cqrs.CommandHandler {
-			return []cqrs.CommandHandler{
-				CreateRoomPublisherCmdHandler{eb},
-			}
-		},
-		CommandsPublisher: commandsPublisher,
-		CommandsSubscriberConstructor: func(handlerName string) (message.Subscriber, error) {
-			// we can reuse subscriber, because all commands have separated topics
-			return commandsSubscriber, nil
-		},
-		GenerateEventsTopic: func(eventName string) string {
-			// because we are using PubSub RabbitMQ config, we can use one topic for all events
-			return "chet-events"
-		},
-		// EventHandlers: func(cb *cqrs.CommandBus, eb *cqrs.EventBus) []cqrs.EventHandler {
-		// 	return []cqrs.EventHandler{}
-		// },
-		EventsPublisher: eventsPublisher,
-		EventsSubscriberConstructor: func(handlerName string) (message.Subscriber, error) {
-			config := amqp.NewDurablePubSubConfig(
-				amqpAddress,
-				amqp.GenerateQueueNameTopicNameWithSuffix(handlerName),
-			)
-
-			return amqp.NewSubscriber(config, logger)
-		},
-		Router:                router,
-		CommandEventMarshaler: cqrsMarshaler,
-		Logger:                logger,
+		StreamName: "chet-messages",
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	if err := router.Run(context.Background()); err != nil {
+	roomService, err := service.NewRoomService(messageStream)
+	if err != nil {
 		panic(err)
 	}
 
-}
-
-type CreateRoomPublisherCmdHandler struct {
-	eventBus *cqrs.EventBus
-}
-
-func (h CreateRoomPublisherCmdHandler) HandlerName() string {
-	return "CreateRoomPublisherCmdHandler"
-}
-
-func (h CreateRoomPublisherCmdHandler) NewCommand() interface{} {
-	return &chat.CreateRoomPublisherCmd{}
-}
-
-func (h CreateRoomPublisherCmdHandler) Handle(ctx context.Context, c interface{}) error {
-	cmd := c.(*chat.CreateRoomPublisherCmd)
-	log.Println("Creating room subscriber")
-	if err := addRoomSubscriber(cmd.ID); err != nil {
-		return err
-	}
-
-	// if err := h.eventBus.Publish(ctx, &chat.RoomCreatedEvent{
-	// 	Room: *room,
-	// 	Time: time.Now().UTC(),
-	// }); err != nil {
-	// 	return err
-	// }
-
-	// log.Println("Created chat room:", *room)
-	return nil
-}
-
-func addRoomSubscriber(roomID chat.RoomID) error {
-	for _, r := range roomRelays {
-		if r.RoomID == roomID.String() {
-			log.Println("Room Subscriber already exists")
-			return nil
+	messageHandler := func(consumerContext stream.ConsumerContext, msg *amqp.Message) {
+		for _, b := range msg.Data {
+			switch msg.Properties.Subject {
+			case chat.RoomCreatedEvent:
+				crm := &chat.RoomCreated{}
+				if err := json.Unmarshal(b, crm); err != nil {
+					panic(err)
+				}
+				handleRoomCreated(roomService, crm)
+			default:
+			}
 		}
 	}
-	cfg := amqp.NewNonDurablePubSubConfig(amqpAddress, func(n string) string { return roomID.String() })
-	subscriber, err := amqp.NewSubscriber(cfg, nil)
+
+	messageConsumer, err := messageStream.NewConsumer(&eventstream.MessageStreamConsumerConfig{
+		Options: stream.NewConsumerOptions().
+			SetConsumerName("chet-publisher").SetOffset(stream.OffsetSpecification{}.First()),
+		MessageHandler: messageHandler,
+		Offset:         stream.OffsetSpecification{}.First(),
+	})
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	publisher, err := amqp.NewPublisher(cfg, nil)
+	messageProducer, err := messageStream.NewProducer(&eventstream.MessageStreamProducerConfig{})
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	relay := &RoomRelay{
-		RoomID:       roomID.String(),
-		Subscription: subscriber,
-		Publisher:    publisher,
+	reactor := &eventstream.Reactor{
+		Stream:   messageStream,
+		Producer: messageProducer,
+		Consumer: messageConsumer,
 	}
-
-	roomRelays = append(roomRelays, relay)
-	log.Println("Added room relay", relay.RoomID)
-
-	//TODO move to chat connect
-	// msgChanel, err := subscriber.Subscribe(context.Background(), roomID.String())
-	// if err != nil {
-	// 	return err
-	// }
-	// messageChannels = append(messageChannels, msgChanel)
-
-	// testMsg := &Message{
-	// 	ID:        "asdf",
-	// 	Timestamp: time.Now().Unix(),
-	// }
-	// payload, err := json.Marshal(testMsg)
-	// if err != nil {
-	// 	return err
-	// }
-	// message := message.NewMessage(watermill.NewUUID(), payload)
-	// publisher.Publish(queueName, message)
-
-	return nil
+	if err := reactor.Run(ctx); err != nil {
+		panic(err)
+	}
 }
 
-func handleRoomSubscriptions() {
-	for _, c := range messageChannels {
-		msg := <-c
-		msg.Ack()
-
-		message := &Message{}
-		if err := json.Unmarshal(msg.Payload, message); err != nil {
-			log.Println(err)
-		}
-
-		fmt.Println("Received room message: ", message)
-	}
+func handleRoomCreated(roomService *service.RoomService, command *chat.RoomCreated) {
+	fmt.Println("Handling Room Created", command)
+	//TODO create subs
 }
+
+// type CreateRoomPublisherCmdHandler struct {
+// 	eventBus *cqrs.EventBus
+// }
+
+// func (h CreateRoomPublisherCmdHandler) HandlerName() string {
+// 	return "CreateRoomPublisherCmdHandler"
+// }
+
+// func (h CreateRoomPublisherCmdHandler) NewCommand() interface{} {
+// 	return &chat.CreateRoomPublisherCmd{}
+// }
+
+// func (h CreateRoomPublisherCmdHandler) Handle(ctx context.Context, c interface{}) error {
+// 	cmd := c.(*chat.CreateRoomPublisherCmd)
+// 	log.Println("Creating room subscriber")
+// 	if err := addRoomSubscriber(cmd.ID); err != nil {
+// 		return err
+// 	}
+
+// 	// if err := h.eventBus.Publish(ctx, &chat.RoomCreatedEvent{
+// 	// 	Room: *room,
+// 	// 	Time: time.Now().UTC(),
+// 	// }); err != nil {
+// 	// 	return err
+// 	// }
+
+// 	// log.Println("Created chat room:", *room)
+// 	return nil
+// }
+
+// func addRoomSubscriber(roomID chat.RoomID) error {
+// 	for _, r := range roomRelays {
+// 		if r.RoomID == roomID.String() {
+// 			log.Println("Room Subscriber already exists")
+// 			return nil
+// 		}
+// 	}
+// 	cfg := amqp.NewNonDurablePubSubConfig(amqpAddress, func(n string) string { return roomID.String() })
+// 	subscriber, err := amqp.NewSubscriber(cfg, nil)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	publisher, err := amqp.NewPublisher(cfg, nil)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	relay := &RoomRelay{
+// 		RoomID:       roomID.String(),
+// 		Subscription: subscriber,
+// 		Publisher:    publisher,
+// 	}
+
+// 	roomRelays = append(roomRelays, relay)
+// 	log.Println("Added room relay", relay.RoomID)
+
+// 	//TODO move to chat connect
+// 	// msgChanel, err := subscriber.Subscribe(context.Background(), roomID.String())
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// messageChannels = append(messageChannels, msgChanel)
+
+// 	// testMsg := &Message{
+// 	// 	ID:        "asdf",
+// 	// 	Timestamp: time.Now().Unix(),
+// 	// }
+// 	// payload, err := json.Marshal(testMsg)
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// message := message.NewMessage(watermill.NewUUID(), payload)
+// 	// publisher.Publish(queueName, message)
+
+// 	return nil
+// }
