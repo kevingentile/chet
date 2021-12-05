@@ -55,16 +55,6 @@ func main() {
 	}
 }
 
-func handleRoomCreated(roomStore *infrastructure.MongoStore, event *chat.RoomCreated) {
-	view := chat.NewRoomView(event.Room)
-	if err := roomStore.Create(view); err != nil {
-		log.Println(err)
-		return
-	}
-
-	log.Println("Created chat room view:", view)
-}
-
 type roomCreatedHandler struct {
 	store *infrastructure.MongoStore
 }

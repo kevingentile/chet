@@ -5,9 +5,15 @@ import (
 	"log"
 	"time"
 
+	"github.com/kevingentile/chet/pkg/chat"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
+
+type EventHandler interface {
+	EventName() string
+	Handle(ctx context.Context, data []byte) error
+}
 
 type EventStream struct {
 	Handlers      []EventHandler
@@ -67,6 +73,15 @@ func (es *EventStream) Run(ctx context.Context) error {
 	es.consumer = consumer
 	<-ctx.Done()
 	return err
+}
+
+func (es *EventStream) Publish(subject string, mesage *amqp.AMQP10) error {
+	mesage.Properties = &amqp.MessageProperties{Subject: chat.RoomCreatedEvent}
+	if err := es.producer.Send(mesage); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (es *EventStream) messageHandler(consumerContext stream.ConsumerContext, msg *amqp.Message) {

@@ -13,40 +13,7 @@ import (
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
 
-var amqpAddress = "amqp://guest:guest@localhost:5672/"
-
-type ChatReactor struct {
-	Reactor     *eventstream.Reactor
-	RoomService *service.RoomService
-}
-
 func main() {
-	reactor := NewChatReactor()
-	if err := reactor.Reactor.Run(context.TODO()); err != nil {
-		panic(err)
-	}
-}
-
-func (cr *ChatReactor) HandleCreateRoom(command *chat.CreateRoom) {
-	log.Println("Handling CreateRoom")
-	room := chat.NewRoom(command.Host)
-	event := &chat.RoomCreated{
-		Room: *room,
-		Time: time.Now().UTC(),
-	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		panic(err)
-	}
-	msg := amqp.NewMessage(payload)
-	msg.Properties = &amqp.MessageProperties{Subject: chat.RoomCreatedEvent}
-	if err := cr.Reactor.Producer.Send(msg); err != nil {
-		panic(err)
-	}
-}
-
-func NewChatReactor() *ChatReactor {
-	var chatReactor *ChatReactor
 	messageStream, err := eventstream.NewMessageStream(&eventstream.StreamConfig{
 		EnvOptions: stream.NewEnvironmentOptions().
 			SetHost("localhost").
@@ -59,87 +26,61 @@ func NewChatReactor() *ChatReactor {
 		StreamName: "chet-messages",
 	})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	messageProducer, err := messageStream.NewProducer(&eventstream.MessageStreamProducerConfig{})
+	eventStream, err := eventstream.NewEventStream(messageStream)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	roomService, err := service.NewRoomService(messageStream)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	handleMessages := func(consumerContext stream.ConsumerContext, msg *amqp.Message) {
-		for _, b := range msg.Data {
-			switch msg.Properties.Subject {
-			case chat.CreateRoomCmd:
-				cr := &chat.CreateRoom{}
-				if err := json.Unmarshal(b, cr); err != nil {
-					panic(err)
-				}
-				chatReactor.HandleCreateRoom(cr)
-			default:
-				// panic("unmached message")
-			}
-		}
-		consumerContext.Consumer.StoreOffset()
+	createRoomHandler := &createRoomHandler{
+		roomService: roomService,
+		eventStream: eventStream,
 	}
-
-	messageConsumer, err := messageStream.NewConsumer(&eventstream.MessageStreamConsumerConfig{
-		Options: stream.NewConsumerOptions().
-			SetConsumerName("chet-chat-reactor").SetOffset(stream.OffsetSpecification{}.First()),
-		MessageHandler: handleMessages,
-		Offset:         stream.OffsetSpecification{}.First(),
-	})
-	if err != nil {
-		panic(err)
+	eventStream.AddEventHandler(createRoomHandler)
+	if err := eventStream.Run(context.TODO()); err != nil {
+		log.Fatal(err)
 	}
-	chatReactor = &ChatReactor{
-		Reactor: &eventstream.Reactor{
-			Stream:   messageStream,
-			Producer: messageProducer,
-			Consumer: messageConsumer,
-		},
-		RoomService: roomService,
-	}
-	return chatReactor
 }
 
-// type CreateRoomCmdHandler struct {
-// 	eventBus   *cqrs.EventBus
-// 	roomSerice *service.RoomService
-// }
+type createRoomHandler struct {
+	roomService *service.RoomService
+	eventStream *eventstream.EventStream
+}
 
-// func (h CreateRoomCmdHandler) HandlerName() string {
-// 	return "CreateRoomHandler"
-// }
+func (h *createRoomHandler) EventName() string {
+	return chat.CreateRoomCmd
+}
 
-// func (h CreateRoomCmdHandler) NewCommand() interface{} {
-// 	return &chat.CreateRoomCmd{}
-// }
+func (h *createRoomHandler) Handle(ctx context.Context, data []byte) error {
+	log.Println("Handling RoomCreated")
+	command := &chat.CreateRoom{}
+	if err := json.Unmarshal(data, command); err != nil {
+		return err
+	}
 
-// func (h CreateRoomCmdHandler) Handle(ctx context.Context, c interface{}) error {
-// 	cmd := c.(*chat.CreateRoomCmd)
+	room := chat.NewRoom(command.Host)
+	event := &chat.RoomCreated{
+		Room: *room,
+		Time: time.Now().UTC(),
+	}
 
-// 	room := chat.NewRoom(cmd.Host)
+	//TODO move to service?
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
 
-// 	if err := h.eventBus.Publish(ctx, &chat.RoomCreatedEvent{
-// 		Room: *room,
-// 		Time: time.Now().UTC(),
-// 	}); err != nil {
-// 		return err
-// 	}
+	msg := amqp.NewMessage(payload)
+	if err := h.eventStream.Publish(chat.RoomCreatedEvent, msg); err != nil {
+		return err
+	}
 
-// 	log.Println("Created chat room:", *room)
-
-// 	if err := h.roomSerice.CreateRoomPublisher(room.ID); err != nil {
-// 		return err
-// 	}
-
-// 	log.Println("Initiaing create room publisher", room.ID)
-
-// 	return nil
-// }
+	return nil
+}
