@@ -58,10 +58,13 @@ func (es *EventStream) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	es.producer = producer
 
 	consumer, err := es.MessageStream.NewConsumer(&MessageStreamConsumerConfig{
-		Options:        stream.NewConsumerOptions().SetOffset(stream.OffsetSpecification{}.First()),
+		Options: stream.NewConsumerOptions().SetAutoCommit(stream.NewAutoCommitStrategy().
+			SetCountBeforeStorage(50). // store each 50 messages stores
+			SetFlushInterval(10 * time.Second)),
 		MessageHandler: es.messageHandler,
 		Offset:         stream.OffsetSpecification{}.First(),
 	})

@@ -69,7 +69,7 @@ func (h *roomCreatedHandler) Handle(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	view := chat.NewRoomView(e.Room)
+	view := chat.NewRoomView(*e)
 	if err := h.store.Create(view); err != nil {
 		return err
 	}

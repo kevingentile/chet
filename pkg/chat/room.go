@@ -27,8 +27,9 @@ type CreateRoom struct {
 }
 
 type RoomCreated struct {
-	ID   RoomID    `json:"rid"`
-	Time time.Time `json:"createdAt"`
+	ID   RoomID      `json:"rid"`
+	Host user.UserID `json:"host"`
+	Time time.Time   `json:"createdAt"`
 }
 
 type RoomDisbanded struct {
@@ -78,15 +79,11 @@ type RoomView struct {
 	CreatedAt time.Time `bson:"createdAt"`
 }
 
-func NewRoomView(room Room) *RoomView {
-	peers := make([]string, len(room.Peers))
-	for i, p := range room.Peers {
-		peers[i] = p.String()
-	}
+func NewRoomView(event RoomCreated) *RoomView {
 	return &RoomView{
-		ID:        room.ID.String(),
-		Host:      room.Host.String(),
-		Peers:     peers,
+		ID:        event.ID.String(),
+		Host:      event.Host.String(),
+		Peers:     make([]string, 0),
 		CreatedAt: time.Now().UTC(),
 	}
 }
