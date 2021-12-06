@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/ha"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/message"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
@@ -59,7 +60,17 @@ func NewMessageStream(config *StreamConfig) (*MessageStream, error) {
 }
 
 func (ms *MessageStream) NewProducer(config *MessageStreamProducerConfig) (*MessageStreamProducer, error) {
-	producer, err := ms.Env.NewProducer(ms.StreamName, config.Options)
+	handlePublishConfirm := func(messageStatus []*stream.ConfirmationStatus) {
+		go func() {
+			for _, message := range messageStatus {
+				if !message.IsConfirmed() {
+					log.Println("Failed to publish message:", message.GetError())
+				}
+
+			}
+		}()
+	}
+	producer, err := ha.NewHAProducer(ms.Env, ms.StreamName, config.Options, handlePublishConfirm)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +120,7 @@ type MessageStreamProducerConfig struct {
 }
 
 type MessageStreamProducer struct {
-	Producer *stream.Producer
+	Producer *ha.ReliableProducer
 }
 
 func (msp *MessageStreamProducer) Close() error {
