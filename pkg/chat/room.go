@@ -27,7 +27,7 @@ type CreateRoom struct {
 }
 
 type RoomCreated struct {
-	Room Room      `json:"room"`
+	ID   RoomID    `json:"rid"`
 	Time time.Time `json:"createdAt"`
 }
 
@@ -69,12 +69,6 @@ func (r *Room) RemoveUser(userID user.UserID) {
 			break
 		}
 	}
-}
-
-type RoomServicer interface {
-	CreateRoom() (*Room, error)
-	DisbandRoom() error
-	PostMessage() error
 }
 
 type RoomView struct {

@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"time"
 
 	"github.com/kevingentile/chet/pkg/chat"
 	"github.com/kevingentile/chet/pkg/eventstream"
 	"github.com/kevingentile/chet/pkg/service"
-	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
 
@@ -39,9 +37,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	roomReactor, err := service.NewRoomReactor(messageStream)
+
 	createRoomHandler := &createRoomHandler{
 		roomService: roomService,
-		eventStream: eventStream,
+		roomReactor: roomReactor,
 	}
 	eventStream.AddEventHandler(createRoomHandler)
 	if err := eventStream.Run(context.TODO()); err != nil {
@@ -51,7 +51,7 @@ func main() {
 
 type createRoomHandler struct {
 	roomService *service.RoomService
-	eventStream *eventstream.EventStream
+	roomReactor *service.RoomReactor
 }
 
 func (h *createRoomHandler) EventName() string {
@@ -66,19 +66,8 @@ func (h *createRoomHandler) Handle(ctx context.Context, data []byte) error {
 	}
 
 	room := chat.NewRoom(command.Host)
-	event := &chat.RoomCreated{
-		Room: *room,
-		Time: time.Now().UTC(),
-	}
 
-	//TODO move to service?
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	msg := amqp.NewMessage(payload)
-	if err := h.eventStream.Publish(chat.RoomCreatedEvent, msg); err != nil {
+	if err := h.roomReactor.RoomCreated(room.ID); err != nil {
 		return err
 	}
 

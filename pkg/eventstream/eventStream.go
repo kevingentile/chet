@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/kevingentile/chet/pkg/chat"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
@@ -75,9 +74,9 @@ func (es *EventStream) Run(ctx context.Context) error {
 	return err
 }
 
-func (es *EventStream) Publish(subject string, mesage *amqp.AMQP10) error {
-	mesage.Properties = &amqp.MessageProperties{Subject: chat.RoomCreatedEvent}
-	if err := es.producer.Send(mesage); err != nil {
+func (es *EventStream) Publish(subject string, message *amqp.AMQP10) error {
+	message.Properties = &amqp.MessageProperties{Subject: subject}
+	if err := es.producer.Send(message); err != nil {
 		return err
 	}
 
@@ -92,10 +91,11 @@ func (es *EventStream) messageHandler(consumerContext stream.ConsumerContext, ms
 	}
 
 	for _, d := range msg.Data {
-		ctx, _ := context.WithTimeout(es.streamContext, time.Duration(time.Minute*1))
+		ctx, cancelFunc := context.WithTimeout(es.streamContext, time.Duration(time.Minute*1))
 		if err := handler.Handle(ctx, d); err != nil {
 			log.Println(err)
 		}
+		cancelFunc()
 	}
 
 	// consumerContext.Consumer.StoreOffset()
