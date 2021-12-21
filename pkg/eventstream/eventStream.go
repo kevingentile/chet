@@ -15,35 +15,37 @@ type EventHandler interface {
 }
 
 type EventStream struct {
-	Handlers      []EventHandler
-	MessageStream *MessageStream
+	handlers      []EventHandler
+	messageStream *MessageStream
 	streamContext context.Context
 	producer      *MessageStreamProducer
 	consumer      *MessageStreamConsumer
+	offsetSpec    stream.OffsetSpecification
 }
 
-func NewEventStream(stream *MessageStream) (*EventStream, error) {
+func NewEventStream(ms *MessageStream, offsetSpec stream.OffsetSpecification) (*EventStream, error) {
 	es := &EventStream{
-		Handlers:      make([]EventHandler, 0),
-		MessageStream: stream,
+		handlers:      make([]EventHandler, 0),
+		messageStream: ms,
+		offsetSpec:    offsetSpec,
 	}
 	return es, nil
 }
 
 func (es *EventStream) AddEventHandler(h EventHandler) {
-	es.Handlers = append(es.Handlers, h)
+	es.handlers = append(es.handlers, h)
 }
 
 func (es *EventStream) HandlerNames() []string {
-	names := make([]string, len(es.Handlers))
-	for i, h := range es.Handlers {
+	names := make([]string, len(es.handlers))
+	for i, h := range es.handlers {
 		names[i] = h.EventName()
 	}
 	return names
 }
 
 func (es *EventStream) GetEventHandler(name string) EventHandler {
-	for _, h := range es.Handlers {
+	for _, h := range es.handlers {
 		if h.EventName() == name {
 			return h
 		}
@@ -54,14 +56,14 @@ func (es *EventStream) GetEventHandler(name string) EventHandler {
 func (es *EventStream) Run(ctx context.Context) error {
 	es.streamContext = ctx
 
-	producer, err := es.MessageStream.NewProducer(&MessageStreamProducerConfig{})
+	producer, err := es.messageStream.NewProducer(&MessageStreamProducerConfig{})
 	if err != nil {
 		return err
 	}
 
 	es.producer = producer
 
-	consumer, err := es.MessageStream.NewConsumer(&MessageStreamConsumerConfig{
+	consumer, err := es.messageStream.NewConsumer(&MessageStreamConsumerConfig{
 		Options: stream.NewConsumerOptions().SetAutoCommit(stream.NewAutoCommitStrategy().
 			SetCountBeforeStorage(50). // store each 50 messages stores
 			SetFlushInterval(10 * time.Second)),

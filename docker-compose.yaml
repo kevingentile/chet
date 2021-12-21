@@ -3,14 +3,30 @@ services:
   mongo:
     image: mongo
     restart: always
-    ports:
-      - 27017:27017
+    container_name: mongodb1
+    expose:
+      - "27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
       MONGO_INITDB_DATABASE: chet
     volumes:
       - "./data/mdb:/data/db/"
+    entrypoint: [ "/usr/bin/mongod", "--replSet", "chetrs", "--bind_ip_all"]
+
+  mongo2:
+    image: mongo
+    restart: always
+    container_name: mongodb2
+    volumes:
+    - "./data/mdb2:/data/db/"
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: chet
+    entrypoint: [ "/usr/bin/mongod", "--replSet", "chetrs", "--bind_ip_all"]
 
   mongo-express:
     image: mongo-express
@@ -20,20 +36,20 @@ services:
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: root
       ME_CONFIG_MONGODB_ADMINPASSWORD: example
-      ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo2:27017/
 
   #docker exec rabbitmq rabbitmq-plugins enable rabbitmq_stream_management
 
-  rabbitmq:
-    container_name: rabbitmq
-    image: rabbitmq:3.9-management
-    restart: unless-stopped
-    hostname: chet-rabbitmq
-    ports:
-      - "5672:5672"
-      - "5552:5552"
-      - "15672:15672"
-    volumes:
-      - "./data/rmq:/var/lib/rabbitmq/mnesia/"
-    environment:
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"
+  # rabbitmq:
+  #   container_name: rabbitmq
+  #   image: rabbitmq:3.9-management
+  #   restart: unless-stopped
+  #   hostname: chet-rabbitmq
+  #   ports:
+  #     - "5672:5672"
+  #     - "5552:5552"
+  #     - "15672:15672"
+  #   volumes:
+  #     - "./data/rmq:/var/lib/rabbitmq/mnesia/"
+  #   environment:
+  #     - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost -rabbit loopback_users "none"
