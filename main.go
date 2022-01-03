@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -65,6 +66,27 @@ func main() {
 	}
 
 	defer changeStream.Close(context.TODO())
+
+	lastLease := &Lease{}
+	auxCollection := database.Collection("chet-aux")
+	opt := options.FindOne()
+	opt.SetSort(bson.M{"$natural": -1})
+	if err := auxCollection.FindOne(context.TODO(), bson.M{}, opt).Decode(lastLease); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("lastLease", lastLease)
+	if *lastLease == (Lease{}) {
+		lease := Lease{
+			ID:        "main-" + uuid.NewString(),
+			ExpiresAt: time.Now().Add(time.Minute * 5),
+			StartAt:   time.Now(),
+		}
+		fmt.Println("Acquiring lease..", lease)
+		if _, err := auxCollection.InsertOne(context.TODO(), lease); err != nil {
+			panic(err)
+		}
+	}
 	runner := func() error {
 		if changeStream.Next(context.TODO()) {
 			var data ChangeEvent
