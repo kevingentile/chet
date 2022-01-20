@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	eh "github.com/looplab/eventhorizon"
 	"github.com/looplab/eventhorizon/eventhandler/projector"
@@ -55,12 +56,10 @@ func (p *UserProjector) Project(ctx context.Context, event eh.Event, entity eh.E
 		u.ID = event.AggregateID()
 		u.Username = data.Username
 		u.Email = data.Email
-	case UserCreateConfirmedEvent:
-		_, ok := event.Data().(*UserCreateConfirmedData)
-		if !ok {
-			return nil, fmt.Errorf("projector: invalid event data type: %v", event.Data())
-		}
-		//TODO send email
+		u.CreatedAt = time.Now().UTC().Unix()
+
+	case UserVerifiedEvent:
+		u.Verified = true
 	default:
 		return nil, fmt.Errorf("could not handle event: %s", event)
 	}

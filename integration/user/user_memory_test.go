@@ -31,6 +31,30 @@ func findUser(ctx context.Context, userRepo *memory.Repo, id uuid.UUID) *user.Us
 	}
 	return nil
 }
+
+func validateUserCreated(t *testing.T, cmd *user.CreateUser, actualUser *user.User) {
+	if actualUser == nil {
+		t.Error("missing user")
+		t.FailNow()
+	}
+
+	if actualUser.Email != cmd.Email {
+		t.Error("emails not equal", actualUser.Email, cmd.Email)
+	}
+
+	if actualUser.Username != cmd.Username {
+		t.Error("usernames not equal", actualUser.Username, cmd.Username)
+	}
+
+	if actualUser.ID != cmd.ID {
+		t.Error("IDs not equal", actualUser.ID, cmd.ID)
+	}
+
+	if actualUser.CreatedAt == 0 {
+		t.Error("createdAt not set", actualUser.CreatedAt)
+	}
+}
+
 func TestUser(t *testing.T) {
 	eventBus := localEventBus.NewEventBus()
 	go func() {
@@ -57,7 +81,7 @@ func TestUser(t *testing.T) {
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	eventBus.AddHandler(ctx, eh.MatchAll{}, eh.EventHandlerFunc(
 		func(ctx context.Context, e eh.Event) error {
 			wg.Done()
@@ -67,32 +91,23 @@ func TestUser(t *testing.T) {
 	eventID := uuid.New()
 	testUserID := uuid.New()
 	user.Setup(ctx, eventStore, eventBus, eventBus, commandBus, userRepo, eventID)
-	cmd := &user.CreateUser{ID: testUserID, Username: "username", Email: "test@gmail.com"}
-	if err := commandBus.HandleCommand(ctx, cmd); err != nil {
+	createUserCmd := &user.CreateUser{ID: testUserID, Username: "username", Email: "test@gmail.com"}
+	if err := commandBus.HandleCommand(ctx, createUserCmd); err != nil {
 		t.Error(err)
+		t.FailNow()
+	}
+
+	verifyUserCmd := &user.VerifyUser{ID: testUserID}
+	if err := commandBus.HandleCommand(ctx, verifyUserCmd); err != nil {
+		t.Error(err)
+		t.FailNow()
 	}
 
 	wg.Wait()
 	time.Sleep(100 * time.Millisecond)
 
 	actualUser := findUser(ctx, userRepo, testUserID)
-
-	if actualUser == nil {
-		t.Error("missing user")
-		t.FailNow()
-	}
-
-	if actualUser.Email != cmd.Email {
-		t.Error("emails not equal", actualUser.Email, cmd.Email)
-	}
-
-	if actualUser.Username != cmd.Username {
-		t.Error("usernames not equal", actualUser.Username, cmd.Username)
-	}
-
-	if actualUser.ID != cmd.ID {
-		t.Error("IDs not equal", actualUser.ID, testUserID)
-	}
+	validateUserCreated(t, createUserCmd, actualUser)
 
 	if err := eventBus.Close(); err != nil {
 		t.Error(err)

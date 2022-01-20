@@ -6,10 +6,8 @@ import (
 )
 
 const (
-	CreateUserCommand        eh.CommandType = "CreateUser"
-	MarkUserVerifiedCommand  eh.CommandType = "VerifyUser"
-	DenyCreateUserCommand    eh.CommandType = "DenyCreateUser"
-	ConfirmUserCreateCommand eh.CommandType = "ConfirmUserCreate"
+	CreateUserCommand eh.CommandType = "CreateUser"
+	VerifyUserCommand eh.CommandType = "VerifyUser"
 )
 
 type CreateUser struct {
@@ -22,28 +20,10 @@ func (c CreateUser) AggregateID() uuid.UUID          { return c.ID }
 func (c CreateUser) AggregateType() eh.AggregateType { return UserAggregateType }
 func (c CreateUser) CommandType() eh.CommandType     { return CreateUserCommand }
 
-type DenyCreateUser struct {
+type VerifyUser struct {
 	ID uuid.UUID
 }
 
-func (c DenyCreateUser) AggregateID() uuid.UUID          { return c.ID }
-func (c DenyCreateUser) AggregateType() eh.AggregateType { return UserAggregateType }
-func (c DenyCreateUser) CommandType() eh.CommandType     { return DenyCreateUserCommand }
-
-type ConfirmUserCreate struct {
-	ID    uuid.UUID
-	Email string
-}
-
-func (c ConfirmUserCreate) AggregateID() uuid.UUID          { return c.ID }
-func (c ConfirmUserCreate) AggregateType() eh.AggregateType { return UserAggregateType }
-func (c ConfirmUserCreate) CommandType() eh.CommandType     { return ConfirmUserCreateCommand }
-
-type DenyUserCreate struct {
-	ID    uuid.UUID
-	Email string
-}
-
-func (c DenyUserCreate) AggregateID() uuid.UUID          { return c.ID }
-func (c DenyUserCreate) AggregateType() eh.AggregateType { return UserAggregateType }
-func (c DenyUserCreate) CommandType() eh.CommandType     { return DenyCreateUserCommand }
+func (c VerifyUser) AggregateID() uuid.UUID          { return c.ID }
+func (c VerifyUser) AggregateType() eh.AggregateType { return UserAggregateType }
+func (c VerifyUser) CommandType() eh.CommandType     { return VerifyUserCommand }

@@ -39,8 +39,7 @@ func Setup(
 	commandHandler := eh.UseCommandHandlerMiddleware(userHandler)
 	for _, cmd := range []eh.CommandType{
 		CreateUserCommand,
-		DenyCreateUserCommand,
-		ConfirmUserCreateCommand,
+		VerifyUserCommand,
 	} {
 		if err := commandBus.SetHandler(commandHandler, cmd); err != nil {
 			return fmt.Errorf("could not add command handler for '%s': %w", cmd, err)
@@ -52,6 +51,7 @@ func Setup(
 	userProjector.SetEntityFactory(func() eh.Entity { return &User{} })
 	if err := local.AddHandler(ctx, eh.MatchEvents{
 		UserCreatedEvent,
+		UserVerifiedEvent,
 	}, userProjector); err != nil {
 		return fmt.Errorf("could not add user projector: %w", err)
 	}
