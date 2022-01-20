@@ -97,3 +97,96 @@ func TestAggregateHandleCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestAggregateApplyCommand(t *testing.T) {
+	TimeNow = func() time.Time {
+		return time.Date(2017, time.July, 10, 23, 0, 0, 0, time.Local)
+	}
+
+	id := uuid.New()
+	cases := map[string]struct {
+		agg         *UserAggregate
+		event       eh.Event
+		expectedAgg *UserAggregate
+		expectedErr error
+	}{
+		"unhandeled event": {
+			agg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+			},
+			event: eh.NewEvent(eh.EventType("unknown"), nil, TimeNow(),
+				eh.ForAggregate(UserAggregateType, id, 1),
+			),
+			expectedAgg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+			},
+			expectedErr: errors.New("could not apply event: unknown"),
+		},
+		"created": {
+			agg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+			},
+			event: eh.NewEvent(UserCreatedEvent, nil, TimeNow(),
+				eh.ForAggregate(UserAggregateType, id, 1),
+			),
+			expectedAgg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+			},
+			expectedErr: nil,
+		},
+		"user already created": {
+			agg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+			},
+			event: eh.NewEvent(UserCreatedEvent, &UserCreatedData{Username: "username", Email: "test@gmail.com"}, TimeNow(), eh.ForAggregate(UserAggregateType, id, 1)),
+			expectedAgg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+				Username:      "username",
+				Email:         "test@gmail.com",
+			},
+			expectedErr: nil,
+		},
+		"veify": {
+			agg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+			},
+			event: eh.NewEvent(UserVerifiedEvent, nil, TimeNow(), eh.ForAggregate(UserAggregateType, id, 1)),
+			expectedAgg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+				Verified:      true,
+			},
+			expectedErr: nil,
+		},
+		"user already verified": {
+			agg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+				Verified:      true,
+			},
+			event: eh.NewEvent(UserVerifiedEvent, nil, TimeNow(), eh.ForAggregate(UserAggregateType, id, 1)),
+			expectedAgg: &UserAggregate{
+				AggregateBase: events.NewAggregateBase(UserAggregateType, id),
+				Verified:      true,
+			},
+			expectedErr: nil,
+		},
+	}
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.agg.ApplyEvent(context.Background(), tc.event)
+			if (err != nil && tc.expectedErr == nil) ||
+				(err == nil && tc.expectedErr != nil) ||
+				(err != nil && tc.expectedErr != nil && err.Error() != tc.expectedErr.Error()) {
+				t.Errorf("test case '%s': incorrect error", name)
+				t.Log("exp:", tc.expectedErr)
+				t.Log("got:", err)
+			}
+			if !reflect.DeepEqual(tc.agg, tc.expectedAgg) {
+				t.Errorf("test case '%s': incorrect aggregate", name)
+				t.Log("exp:\n", pretty.Sprint(tc.expectedAgg))
+				t.Log("got:\n", pretty.Sprint(tc.agg))
+			}
+		})
+	}
+}
