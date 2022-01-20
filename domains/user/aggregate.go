@@ -20,6 +20,9 @@ func init() {
 
 var _ = eh.Aggregate(&UserAggregate{})
 
+// TimeNow is a mockable version of time.Now.
+var TimeNow = time.Now
+
 const UserAggregateType eh.AggregateType = "User"
 
 type UserAggregate struct {
@@ -40,7 +43,6 @@ func NewUserAggregate(id uuid.UUID) *UserAggregate {
 }
 
 func (a *UserAggregate) HandleCommand(ctx context.Context, cmd eh.Command) error {
-	now := time.Now()
 	switch cmd := cmd.(type) {
 	case *CreateUser:
 		if a.Email != "" || a.Username != "" {
@@ -49,12 +51,12 @@ func (a *UserAggregate) HandleCommand(ctx context.Context, cmd eh.Command) error
 		a.AppendEvent(UserCreatedEvent, &UserCreatedData{
 			Username: cmd.Username,
 			Email:    cmd.Email,
-		}, now)
+		}, TimeNow())
 	case *VerifyUser:
 		if a.Verified {
 			return errors.New("user already verified")
 		}
-		a.AppendEvent(UserVerifiedEvent, nil, now)
+		a.AppendEvent(UserVerifiedEvent, nil, TimeNow())
 	default:
 		return fmt.Errorf("could not handle command: %s", cmd.CommandType())
 	}

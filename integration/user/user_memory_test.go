@@ -55,6 +55,12 @@ func validateUserCreated(t *testing.T, cmd *user.CreateUser, actualUser *user.Us
 	}
 }
 
+func validateUserVerified(t *testing.T, cmd *user.VerifyUser, actualUser *user.User) {
+	if !actualUser.Verified {
+		t.Error("user not verified")
+	}
+}
+
 func TestUser(t *testing.T) {
 	eventBus := localEventBus.NewEventBus()
 	go func() {
@@ -108,6 +114,7 @@ func TestUser(t *testing.T) {
 
 	actualUser := findUser(ctx, userRepo, testUserID)
 	validateUserCreated(t, createUserCmd, actualUser)
+	validateUserVerified(t, verifyUserCmd, actualUser)
 
 	if err := eventBus.Close(); err != nil {
 		t.Error(err)
