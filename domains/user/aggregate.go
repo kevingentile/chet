@@ -60,7 +60,17 @@ func (a *UserAggregate) HandleCommand(ctx context.Context, cmd eh.Command) error
 			CreatedAt: now.Unix(),
 		}, now)
 		return nil
+	case *ConfirmUserCreate:
+		a.AppendEvent(UserCreateConfirmedEvent, &ConfirmUserCreate{
+			ID:    cmd.ID,
+			Email: cmd.Email,
+		}, now)
+	case *DenyCreateUser:
+		a.AppendEvent(UserCreateDeniedEvent, &DenyCreateUser{
+			ID: cmd.ID,
+		}, now)
 	}
+
 	return nil
 }
 
@@ -70,11 +80,21 @@ func (a *UserAggregate) ApplyEvent(ctx context.Context, event eh.Event) error {
 		if data, ok := event.Data().(*UserCreatedData); ok {
 			a.Username = data.Username
 			a.Email = data.Email
-			a.CreatedAt = data.CreatedAt
 		} else {
 			log.Println("invalid UserCreatedData", event.Data())
 		}
-	}
+	// case UserCreateDeniedEvent:
+	// 	if data, ok := event.Data().(*UserCreateDeniedData); ok {
 
+	// 	}
+	// }
+	case UserCreateConfirmedEvent:
+		if _, ok := event.Data().(*UserCreateConfirmedData); ok {
+			a.CreatedAt = time.Now().Unix()
+		} else {
+			log.Println("invalid UserCreatedData")
+		}
+
+	}
 	return nil
 }

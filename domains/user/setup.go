@@ -39,6 +39,8 @@ func Setup(
 	commandHandler := eh.UseCommandHandlerMiddleware(userHandler)
 	for _, cmd := range []eh.CommandType{
 		CreateUserCommand,
+		DenyCreateUserCommand,
+		ConfirmUserCreateCommand,
 	} {
 		if err := commandBus.SetHandler(commandHandler, cmd); err != nil {
 			return fmt.Errorf("could not add command handler for '%s': %w", cmd, err)
