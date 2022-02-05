@@ -9,6 +9,7 @@ import (
 	"github.com/looplab/eventhorizon/commandhandler/aggregate"
 	"github.com/looplab/eventhorizon/commandhandler/bus"
 	"github.com/looplab/eventhorizon/eventhandler/projector"
+	"github.com/looplab/eventhorizon/middleware/eventhandler/observer"
 	"github.com/looplab/eventhorizon/uuid"
 )
 
@@ -50,17 +51,18 @@ func Setup(
 		NewUserProjector(), invitationRepo)
 	userProjector.SetEntityFactory(func() eh.Entity { return &User{} })
 	if err := local.AddHandler(ctx, eh.MatchEvents{
-		UserCreatedEvent,
-		UserVerifiedEvent,
+		CreatedEvent,
+		VerifiedEvent,
+		CreateConfirmedEvent,
 	}, userProjector); err != nil {
 		return fmt.Errorf("could not add user projector: %w", err)
 	}
 
-	// // Add a logger as an observer.
-	// if err := global.AddHandler(ctx, eh.MatchAll{},
-	// 	eh.UseEventHandlerMiddleware(&Logger{}, observer.Middleware)); err != nil {
-	// 	return fmt.Errorf("could not add logger to event bus: %w", err)
-	// }
+	// Add a logger as an observer.
+	if err := global.AddHandler(ctx, eh.MatchAll{},
+		eh.UseEventHandlerMiddleware(&Logger{}, observer.Middleware)); err != nil {
+		return fmt.Errorf("could not add logger to event bus: %w", err)
+	}
 
 	return nil
 }

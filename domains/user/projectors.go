@@ -48,7 +48,7 @@ func (p *UserProjector) Project(ctx context.Context, event eh.Event, entity eh.E
 	}
 
 	switch event.EventType() {
-	case UserCreatedEvent:
+	case Created:
 		data, ok := event.Data().(*UserCreatedData)
 		if !ok {
 			return nil, fmt.Errorf("projector: invalid event data type: %v", event.Data())
@@ -58,7 +58,7 @@ func (p *UserProjector) Project(ctx context.Context, event eh.Event, entity eh.E
 		u.Email = data.Email
 		u.CreatedAt = time.Now().UTC().Unix()
 
-	case UserVerifiedEvent:
+	case Verified:
 		u.Verified = true
 	default:
 		return nil, fmt.Errorf("could not handle event: %s", event)
